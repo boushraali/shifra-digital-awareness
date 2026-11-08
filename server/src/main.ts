@@ -115,9 +115,13 @@ const app = buildApp();
 export default app;
 
 const isMain = (() => { try { return !!process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]); } catch { return false; } })();
-if (isMain) migrate().then(() => {
+async function start() {
+  // A misconfigured host must still answer (with the setup page) rather than exit and loop on 500s.
+  if (configErrors.length) console.error('[config] missing/invalid environment variables:', configErrors.join(', '));
+  else await migrate().catch((e) => console.error('[startup] database migration failed — check DATABASE_URL:', e?.message ?? e));
   const server = app.listen(config.port, '0.0.0.0', () => console.log(`✓ شفرة الوعي الرقمي API on :${config.port} (storage: ${storageKind})`));
-  const timer = startScheduler();
-  // Cloudflare sends SIGTERM before stopping a container (sleep, deploy, host move)
-  process.on('SIGTERM', () => { clearInterval(timer); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 10_000).unref(); });
-}).catch((e) => { console.error(e); process.exit(1); });
+  const timer = configErrors.length ? undefined : startScheduler();
+  // Cloudflare/containers send SIGTERM before stopping
+  process.on('SIGTERM', () => { if (timer) clearInterval(timer); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 10_000).unref(); });
+}
+if (isMain) start().catch((e) => { console.error(e); process.exit(1); });
