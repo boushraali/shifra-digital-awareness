@@ -1,0 +1,23 @@
+# Usage:  cp .env.example .env  (set strong secrets)  →  docker compose up -d --build
+#         docker compose exec app npm run create-teacher -- --email you@school.sa --name "أ. الاسم"
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nova
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+      POSTGRES_DB: nova
+    volumes: [dbdata:/var/lib/postgresql/data]
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on: [db]
+    environment:
+      DATABASE_URL: postgres://nova:${DB_PASSWORD}@db:5432/nova
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:4000}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
+    ports: ["4000:4000"]
+    volumes: [files:/data/storage]
+volumes: { dbdata: {}, files: {} }

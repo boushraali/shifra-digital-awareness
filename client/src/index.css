@@ -1,0 +1,19 @@
+@import '@fontsource/ibm-plex-sans-arabic/400.css';
+@import '@fontsource/ibm-plex-sans-arabic/500.css';
+@import '@fontsource/ibm-plex-sans-arabic/600.css';
+@import '@fontsource/ibm-plex-sans-arabic/700.css';
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html { -webkit-tap-highlight-color: transparent; }
+body { @apply bg-slate-50 font-sans text-slate-800 antialiased; }
+.student-bg { background: radial-gradient(1200px 600px at 100% -10%, #4c1d95 0, transparent 60%), radial-gradient(900px 500px at -10% 110%, #0e7490 0, transparent 55%), #0b0a1f; }
+.glass { @apply rounded-2xl border border-white/10 bg-white/[.06] backdrop-blur-md; }
+.prose-lesson p { @apply mb-4 leading-8; }
+@media print {
+  @page { size: A4 landscape; margin: 0; }
+  body:has(.cert-print) * { visibility: hidden; }
+  body:has(.cert-print) .cert-print, body:has(.cert-print) .cert-print * { visibility: visible; }
+  .cert-print { position: fixed; inset: 0; }
+}
