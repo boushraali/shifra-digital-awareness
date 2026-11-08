@@ -17,4 +17,4 @@ RUN mkdir -p /data/storage && chown -R node:node /data /app
 USER node
 ENV STORAGE_DIR=/data/storage PORT=4000
 EXPOSE 4000
-CMD ["npx", "tsx", "src/index.ts"]
+CMD ["npx", "tsx", "src/main.ts"]

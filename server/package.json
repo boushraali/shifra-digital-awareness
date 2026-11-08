@@ -4,8 +4,8 @@
   "description": "شفرة الوعي الرقمي — API",
   "main": "index.js",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
-    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
     "migrate": "tsx src/migrate.ts",
     "seed:demo": "tsx src/seedDemo.ts",
     "typecheck": "tsc -p .",
