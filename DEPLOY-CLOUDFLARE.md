@@ -17,7 +17,7 @@
 ## المتطلبات (مرة واحدة)
 
 1. **خطة Workers Paid** في حساب Cloudflare، لأن Containers تتطلبها (5$ شهريًا مع استخدام مضمَّن).
-2. على جهازك: **Node.js 22** و**Docker Desktop** يعمل، لأن Wrangler يبني صورة الحاوية بـ Docker.
+2. لا يلزم Docker عند النشر عبر GitHub، لأن Cloudflare يبني الصورة على خوادمه.
 
 ## الخطوة 1: تفعيل R2 وإنشاء الحاوية (bucket)
 
@@ -36,41 +36,32 @@
 
 تُنشأ الجداول ويُحمَّل محتوى العوالم السبعة تلقائيًا عند أول تشغيل للحاوية.
 
-## الخطوة 3: الإعداد والنشر
+## الخطوة 3: الربط بـ GitHub والنشر (بدون Docker أو Terminal)
 
-افتحي الطرفية (Terminal) داخل مجلد المشروع:
+1. في لوحة Cloudflare افتحي **Workers & Pages**، ثم **Create**، ثم **Import a repository**، واختاري `boushraali/shifra-digital-awareness`.
+2. اضبطي الإعدادات كالتالي:
+   - Project name: `shifra-digital-awareness` (يجب أن يطابق الاسم في `wrangler.jsonc`)
+   - Build command: اتركيه فارغًا
+   - Deploy command: `npx wrangler deploy`
+   - Root directory: `/`
+3. اضغطي **Deploy**. يبني Cloudflare صورة الحاوية بنفسه، ويستغرق ذلك عدة دقائق في المرة الأولى.
+4. بعد انتهاء النشر افتحي **Settings ← Variables and Secrets** وأضيفي القيم التالية:
 
-```bash
-npm install
-npx wrangler login
-```
+| الاسم | النوع | القيمة |
+|---|---|---|
+| `PUBLIC_URL` | Text | رابط الموقع `https://shifra-digital-awareness.<subdomain>.workers.dev` |
+| `S3_ENDPOINT` | Text | `https://<ACCOUNT_ID>.r2.cloudflarestorage.com` |
+| `DATABASE_URL` | Secret | رابط Neon |
+| `S3_ACCESS_KEY_ID` | Secret | من توكن R2 |
+| `S3_SECRET_ACCESS_KEY` | Secret | من توكن R2 |
+| `JWT_SECRET` | Secret | نص عشوائي طوله 64 حرفًا |
+| `JOBS_TOKEN` | Secret | نص عشوائي آخر طوله 64 حرفًا |
 
-عدّلي قسم `vars` في `wrangler.jsonc`:
-- `S3_ENDPOINT`: ضعي فيه رقم الحساب (Account ID).
-- `PUBLIC_URL`: اتركيه مؤقتًا، وستعدّلينه بعد أول نشر.
+5. من **Deployments** اختاري آخر بناء واضغطي **Retry build**، حتى تبدأ الحاوية بالقيم الجديدة.
 
-أضيفي الأسرار. سيطلب كل أمر القيمة ولن تظهر على الشاشة:
+بعد ذلك، أي تعديل يُرفع إلى فرع `main` في GitHub يُنشر تلقائيًا.
 
-```bash
-npx wrangler secret put DATABASE_URL          # رابط Neon
-npx wrangler secret put S3_ACCESS_KEY_ID      # من توكن R2
-npx wrangler secret put S3_SECRET_ACCESS_KEY  # من توكن R2
-openssl rand -hex 32 | npx wrangler secret put JWT_SECRET
-openssl rand -hex 32 | npx wrangler secret put JOBS_TOKEN
-```
-
-> على Windows بدون `openssl`: نفّذي `npx wrangler secret put JWT_SECRET`، والصقي نصًا عشوائيًا طوله 64 حرفًا. افعلي الشيء نفسه مع `JOBS_TOKEN`.
-
-ثم انشري:
-
-```bash
-npm run deploy
-```
-
-النشر الأول يستغرق عدة دقائق لأنه يبني الصورة ويرفعها. في النهاية يظهر رابط مثل:
-`https://shifra-digital-awareness.<subdomain>.workers.dev`
-
-**مهم:** ضعي هذا الرابط في `PUBLIC_URL` داخل `wrangler.jsonc`، ثم نفّذي `npm run deploy` مرة أخرى، لأن رموز QR في الشهادات تستخدمه.
+> بديل لمن يفضّل الطرفية: من مجلد المشروع نفّذي `npm install` ثم `npx wrangler login`، وأضيفي كل قيمة بالأمر `npx wrangler secret put NAME`، ثم `npm run deploy`. هذا الطريق يحتاج Docker Desktop.
 
 ## الخطوة 4: إنشاء حساب المعلمة
 
