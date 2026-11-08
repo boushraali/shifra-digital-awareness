@@ -1,7 +1,7 @@
 /** Scheduled jobs (run every minute inside the API process). Stage/course availability itself is computed live
  *  from the stored dates on every request, so opening/closing is automatic even if a job run is missed;
  *  these jobs handle notifications and closing stale attempts. */
-import { q, tx, notify, teacherIds } from './core.js';
+import { q, tx, notify, teacherIds, pool } from './core.js';
 import { submitAttempt } from '../routes/learn.js';
 
 export async function targetedStudentIds(stageId: number): Promise<string[]> {
@@ -18,7 +18,17 @@ export async function targetedStudentIds(stageId: number): Promise<string[]> {
   return rows.map((r) => r.id);
 }
 
+/** Runs the jobs unless another instance is already running them (Postgres advisory lock). */
 export async function runJobs(now = new Date()) {
+  const c = await pool.connect();
+  try {
+    const { rows: [l] } = await c.query('SELECT pg_try_advisory_lock(424242) AS ok');
+    if (!l.ok) return;
+    try { await runJobsUnlocked(now); } finally { await c.query('SELECT pg_advisory_unlock(424242)'); }
+  } finally { c.release(); }
+}
+
+async function runJobsUnlocked(now: Date) {
   // 1) stage opened → notify targeted students
   for (const s of await q(`SELECT sc.stage_id, st.title, sc.close_at FROM stage_schedules sc JOIN stages st ON st.id=sc.stage_id
       WHERE sc.publish_state='published' AND (sc.open_at IS NULL OR sc.open_at <= $1) AND (sc.close_at IS NULL OR sc.close_at > $1) AND sc.open_notified_at IS NULL`, [now])) {

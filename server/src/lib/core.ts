@@ -28,7 +28,8 @@ if (config.jwtSecret.length < 32 || config.jwtSecret.includes('CHANGE_ME')) {
 // pg returns numeric as string; parse to number for API convenience.
 pg.types.setTypeParser(1700, (v) => (v === null ? null : parseFloat(v)));
 pg.types.setTypeParser(20, (v) => (v === null ? null : parseInt(v, 10)));
-export const pool = new pg.Pool({ connectionString: config.databaseUrl, max: 15 });
+// Serverless instances are many and short-lived: keep each pool small (use a pooled connection string, e.g. Neon "-pooler").
+export const pool = new pg.Pool({ connectionString: config.databaseUrl, max: process.env.VERCEL ? 3 : 15, idleTimeoutMillis: process.env.VERCEL ? 5_000 : 10_000 });
 
 export async function q<T = any>(text: string, params: unknown[] = []): Promise<T[]> {
   const r = await pool.query(text, params);

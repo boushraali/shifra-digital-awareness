@@ -8,7 +8,8 @@ import { config, authenticate, requireAuth, errorHandler, HttpError } from './li
 import { migrate } from './migrate.js';
 import crypto from 'node:crypto';
 import { startScheduler, runJobs } from './lib/jobs.js';
-import { storageKind } from './lib/storage.js';
+import { storageKind, storageOrigins, isServerless } from './lib/storage.js';
+import { INDEX_HTML } from './generated/indexHtml.js';
 import { auth } from './routes/auth.js';
 import { journey } from './routes/journey.js';
 import { learn } from './routes/learn.js';
@@ -26,8 +27,9 @@ export function buildApp() {
   app.use(helmet({
     contentSecurityPolicy: {
       directives: {
-        defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'blob:'], mediaSrc: ["'self'", 'blob:'],
-        frameSrc: ['https://www.youtube-nocookie.com', 'https://www.youtube.com', 'https://player.vimeo.com'],
+        defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'blob:', ...storageOrigins()], mediaSrc: ["'self'", 'blob:', ...storageOrigins()],
+        connectSrc: ["'self'", ...storageOrigins()],
+        frameSrc: ["'self'", 'https://www.youtube-nocookie.com', 'https://www.youtube.com', 'https://player.vimeo.com', ...storageOrigins()],
         styleSrc: ["'self'", "'unsafe-inline'"], scriptSrc: ["'self'"], objectSrc: ["'none'"],
       },
     },
@@ -46,13 +48,26 @@ export function buildApp() {
   app.use('/api', authenticate);
 
   app.get('/api/health', (_req, res) => res.json({ ok: true }));
-  // Triggered by the Cloudflare Cron Trigger (the container may be asleep between requests).
-  app.post('/api/internal/run-jobs', async (req, res, next) => {
-    const want = process.env.JOBS_TOKEN ?? '';
-    const got = req.get('x-jobs-token') ?? '';
-    if (!want || want.length !== got.length || !crypto.timingSafeEqual(Buffer.from(want), Buffer.from(got))) return next(new HttpError(404, 'المسار غير موجود'));
+  // Scheduled jobs endpoint: Vercel Cron (GET + "Authorization: Bearer $CRON_SECRET")
+  // or Cloudflare Cron (POST + "x-jobs-token: $JOBS_TOKEN").
+  const safeEq = (a: string, b: string) => !!a && a.length === b.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+  app.all('/api/internal/run-jobs', async (req, res, next) => {
+    const ok = (req.method === 'GET' && safeEq(`Bearer ${process.env.CRON_SECRET ?? ''}`, req.get('authorization') ?? '') && !!process.env.CRON_SECRET)
+      || (req.method === 'POST' && safeEq(process.env.JOBS_TOKEN ?? '', req.get('x-jobs-token') ?? ''));
+    if (!ok) return next(new HttpError(404, 'المسار غير موجود'));
     try { await runJobs(); res.json({ ok: true }); } catch (e) { next(e); }
   });
+  // Serverless: no background timer, so piggy-back the jobs on traffic (at most once a minute per instance).
+  if (isServerless) {
+    let last = 0;
+    app.use('/api', (_req, _res, next) => {
+      if (Date.now() - last > 60_000) {
+        last = Date.now();
+        import('@vercel/functions').then(({ waitUntil }) => waitUntil(runJobs().catch((e) => console.error('[jobs]', e)))).catch(() => {});
+      }
+      next();
+    });
+  }
   app.use('/api/auth', auth);
   app.use('/api/journey', journey);
   app.use('/api/learn', learn);
@@ -74,14 +89,21 @@ export function buildApp() {
   if (fs.existsSync(dist)) {
     app.use(express.static(dist, { index: false, maxAge: '1h' }));
     app.get(/^\/(?!api).*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
+  } else if (INDEX_HTML) {
+    // Vercel: static assets come from the CDN (public/), the function only answers SPA routes
+    app.get(/^\/(?!api).*/, (_req, res) => res.type('html').setHeader('Cache-Control', 'no-cache').send(INDEX_HTML));
   }
   app.use(errorHandler);
   return app;
 }
 
+const app = buildApp();
+/** Vercel's Express integration uses this default export (one Vercel Function). */
+export default app;
+
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   await migrate();
-  const server = buildApp().listen(config.port, '0.0.0.0', () => console.log(`✓ شفرة الوعي الرقمي API on :${config.port} (storage: ${storageKind})`));
+  const server = app.listen(config.port, '0.0.0.0', () => console.log(`✓ شفرة الوعي الرقمي API on :${config.port} (storage: ${storageKind})`));
   const timer = startScheduler();
   // Cloudflare sends SIGTERM before stopping a container (sleep, deploy, host move)
   process.on('SIGTERM', () => { clearInterval(timer); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 10_000).unref(); });

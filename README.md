@@ -41,6 +41,10 @@ cd client && npm install && npm run dev   # http://localhost:5173
 cd server && npm run create-teacher -- --email teacher@school.sa --name "أ. نورة" --school "اسم المدرسة"
 ```
 
+## النشر على Vercel
+
+راجعي [DEPLOY-VERCEL.md](DEPLOY-VERCEL.md): Express كدالة Vercel، وقاعدة البيانات على Neon، والملفات على R2 أو S3.
+
 ## النشر على Cloudflare
 
 راجعي [DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md): Worker + Container، وقاعدة البيانات PostgreSQL على Neon، والملفات على R2.

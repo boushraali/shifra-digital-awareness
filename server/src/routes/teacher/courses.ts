@@ -1,7 +1,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { ah, q, q1, tx, bad, notFound, audit } from '../../lib/core.js';
-import { upload, registerFile } from '../../lib/uploads.js';
+import { upload, registerFile, prepareDirectUpload, completeDirectUpload } from '../../lib/uploads.js';
+import { directUploads } from '../../lib/storage.js';
 import { courseStatus, COURSE_STATUS_LABEL, evaluateCourse, ENROLL_LABEL } from '../../lib/courses.js';
 import { sendTable } from './exporting.js';
 
@@ -177,6 +178,19 @@ courses.delete('/lessons/:lid', ah(async (req, res) => {
 }));
 
 // ---------------------------------------------------------------- uploads
+/** Direct uploads to object storage (required on Vercel: request bodies are limited to 4.5 MB). */
+courses.post('/upload-url', ah(async (req, res) => {
+  if (!directUploads()) return res.status(501).json({ error: 'direct uploads disabled' });
+  const b = z.object({ purpose: z.enum(['lesson', 'cover']), filename: z.string().min(1).max(250), size: z.number().int().positive() }).parse(req.body);
+  res.json(await prepareDirectUpload(b.purpose, b.filename, b.size, req.user!.id));
+}));
+courses.post('/upload-complete', ah(async (req, res) => {
+  const { ticket } = z.object({ ticket: z.string().min(10).max(2000) }).parse(req.body);
+  const f = await completeDirectUpload(ticket, req.user!.id);
+  await audit(req.user!.id, 'file.upload', 'file', f.id, { name: f.original_name, size: f.size_bytes }, req.ip);
+  res.status(201).json(f);
+}));
+
 courses.post('/upload/:purpose', upload.single('file'), ah(async (req, res) => {
   const purpose = z.enum(['lesson', 'cover']).parse(req.params.purpose);
   const f = await registerFile(req.file, purpose, req.user!.id);

@@ -70,14 +70,13 @@ common.get('/files/:id', requireAuth(), ah(async (req, res) => {
   }
   const inlineOk = /^(image\/(png|jpeg|webp|gif)|video\/(mp4|webm)|application\/pdf)$/.test(f.mime);
   if (!inlineOk) download = true;
-  res.setHeader('Content-Type', f.mime);
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Cache-Control', 'private, max-age=300');
   res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
-  res.setHeader('Content-Disposition', `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(f.original_name)}`);
-  // supports HTTP range requests (video seeking) on both disk and R2
-  if (!(await sendFile(res, f.storage_key, req.get('range') ?? undefined))) {
-    res.removeHeader('Content-Disposition');
+  const disposition = `${download ? 'attachment' : 'inline'}; filename*=UTF-8''${encodeURIComponent(f.original_name)}`;
+  // disk: streamed with HTTP Range support; object storage: redirect to a short-lived signed URL
+  if (!(await sendFile(res, f.storage_key, { range: req.get('range') ?? undefined, mime: f.mime, disposition }))) {
+    res.removeHeader('Content-Security-Policy');
     throw notFound('الملف غير موجود في التخزين');
   }
 }));

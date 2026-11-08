@@ -48,3 +48,18 @@ export function download(url: string) {
   a.remove();
 }
 export const fileUrl = (id: string, dl = false) => `/api/files/${id}${dl ? '?download=1' : ''}`;
+
+/** Uploads a course file. Uses direct browser → object-storage upload when the server supports it
+ *  (needed on Vercel, where request bodies are capped at 4.5 MB); otherwise a normal multipart upload. */
+export async function uploadFile(purpose: 'lesson' | 'cover', file: File): Promise<any> {
+  let ticket: any;
+  try {
+    ticket = await api.post('/teacher/courses/upload-url', { purpose, filename: file.name, size: file.size });
+  } catch (e: any) {
+    if (e.status === 501) return api.upload(`/teacher/courses/upload/${purpose}`, file);
+    throw e;
+  }
+  const put = await fetch(ticket.url, { method: 'PUT', headers: ticket.headers, body: file });
+  if (!put.ok) throw new ApiError(put.status, 'تعذّر رفع الملف إلى التخزين');
+  return api.post('/teacher/courses/upload-complete', { ticket: ticket.ticket });
+}

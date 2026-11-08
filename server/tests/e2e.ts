@@ -190,6 +190,25 @@ const dlf = await T.req('GET', `/api/files/${up.body.id}`, undefined, { raw: tru
 ok(dlf.status === 200 && dlf.text.startsWith('%PDF-1.4'), 'stored file served back intact');
 const rg = await fetch(BASE + `/api/files/${up.body.id}`, { headers: { cookie: T.cookie, range: 'bytes=0-3' } });
 ok(rg.status === 206 && (await rg.text()) === '%PDF', 'HTTP range requests (video seeking)');
+const pre = await T.post('/api/teacher/courses/upload-url', { purpose: 'lesson', filename: 'فيديو.mp4', size: 24 });
+if (pre.status === 200) {
+  const mp4 = new Uint8Array([0, 0, 0, 24, ...Buffer.from('ftypisom'), ...new Array(12).fill(0)]);
+  const put = await fetch(pre.body.url, { method: 'PUT', headers: pre.body.headers, body: mp4 });
+  const done = await T.post('/api/teacher/courses/upload-complete', { ticket: pre.body.ticket });
+  ok(put.ok && done.status === 201 && done.body.mime === 'video/mp4', 'direct browser→storage upload (Vercel-safe)');
+  ok((await S.post('/api/teacher/courses/upload-complete', { ticket: pre.body.ticket })).status === 403, 'students cannot complete uploads');
+  const pre2 = await T.post('/api/teacher/courses/upload-url', { purpose: 'lesson', filename: 'x.pdf', size: 9 });
+  await fetch(pre2.body.url, { method: 'PUT', headers: pre2.body.headers, body: 'not a pdf' });
+  ok((await T.post('/api/teacher/courses/upload-complete', { ticket: pre2.body.ticket })).status === 400, 'direct upload with fake content rejected');
+  ok((await T.post('/api/teacher/courses/upload-url', { purpose: 'lesson', filename: 'a.exe', size: 9 })).status === 400, 'direct upload: disallowed type rejected');
+  const r302 = await fetch(BASE + `/api/files/${up.body.id}`, { headers: { cookie: T.cookie }, redirect: 'manual' });
+  ok(r302.status === 302 && !!r302.headers.get('location'), 'object storage download → short-lived signed URL');
+}
+if (process.env.CRON_SECRET) {
+  ok((await anon.req('GET', '/api/internal/run-jobs')).status === 404, 'cron endpoint hidden without secret');
+  const cr = await fetch(BASE + '/api/internal/run-jobs', { headers: { authorization: `Bearer ${process.env.CRON_SECRET}` } });
+  ok(cr.status === 200, 'Vercel Cron endpoint with CRON_SECRET');
+}
 
 const cat = (await S.get('/api/learn/courses')).body;
 const demoCourse = cat.find((c: any) => c.title === 'أساسيات الأمن السيبراني');

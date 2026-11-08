@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { Plus, Pencil, Trash2, ArrowUp, ArrowDown, Upload, Eye, Users, BookOpen, FolderOpen, ListChecks, Download, FileText, ArrowRight, Image as ImageIcon, Save } from 'lucide-react';
-import { api, download, fileUrl } from '../../lib/api';
+import { api, download, fileUrl, uploadFile as uploadToStorage } from '../../lib/api';
 import { useLoad, Spinner, ErrorBox, Card, Button, Badge, Modal, Field, Input, Select, Textarea, PageHeader, Table, Empty, useToast, Toggle, DateTimeField, STATUS_COLOR, Tabs, Progress, cx } from '../../lib/ui';
 import { fmtDate, gradeLabel } from '../../lib/format';
 import { LessonView, KindIcon } from '../student/Courses';
@@ -64,7 +64,7 @@ export function CourseForm({ course, onClose, onSaved }: { course: any; onClose:
   const up = (p: any) => setC({ ...c, ...p });
   async function uploadCover(f?: File) {
     if (!f) return;
-    try { const r = await api.upload('/teacher/courses/upload/cover', f); up({ cover_file_id: r.id }); } catch (e: any) { toast('err', e.message); }
+    try { const r = await uploadToStorage('cover', f); up({ cover_file_id: r.id }); } catch (e: any) { toast('err', e.message); }
   }
   async function save(state?: string) {
     setBusy(true);
@@ -233,7 +233,7 @@ function LessonForm({ moduleId, lesson, onClose, onSaved }: { moduleId: string; 
   async function uploadFile(f?: File) {
     if (!f) return;
     setUploading(true);
-    try { const r = await api.upload('/teacher/courses/upload/lesson', f); up({ file_id: r.id, file_name: r.original_name }); toast('ok', 'تم رفع الملف'); } catch (e: any) { toast('err', e.message); } finally { setUploading(false); }
+    try { const r = await uploadToStorage('lesson', f); up({ file_id: r.id, file_name: r.original_name }); toast('ok', 'تم رفع الملف'); } catch (e: any) { toast('err', e.message); } finally { setUploading(false); }
   }
   async function save() {
     setBusy(true);
