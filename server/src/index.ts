@@ -4,7 +4,7 @@ import cookieParser from 'cookie-parser';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { config, authenticate, requireAuth, errorHandler, HttpError } from './lib/core.js';
+import { config, configErrors, authenticate, requireAuth, errorHandler, HttpError } from './lib/core.js';
 import { migrate } from './migrate.js';
 import crypto from 'node:crypto';
 import { startScheduler, runJobs } from './lib/jobs.js';
@@ -35,6 +35,19 @@ export function buildApp() {
     },
     crossOriginEmbedderPolicy: false,
   }));
+  // Misconfigured deployment → explain instead of crashing (names of missing variables only, never values)
+  if (configErrors.length) {
+    console.error('[config] missing/invalid environment variables:', configErrors.join(', '));
+    app.use((req, res) => {
+      if (req.path.startsWith('/api')) return res.status(503).json({ error: 'المنصة غير مهيأة بعد', missing: configErrors });
+      res.status(503).type('html').send(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>إعداد المنصة غير مكتمل</title>
+<body style="font-family:system-ui;max-width:640px;margin:10vh auto;padding:0 20px;line-height:1.8;color:#1e1b4b">
+<h1>إعداد المنصة غير مكتمل</h1><p>المتغيرات التالية مفقودة أو غير صالحة في إعدادات الاستضافة (Vercel ← Settings ← Environment Variables):</p>
+<ul>${configErrors.map((e) => `<li><code>${e}</code></li>`).join('')}</ul><p>أضيفيها ثم أعيدي النشر (Deployments ← Redeploy).</p>
+<p dir="ltr" style="color:#64748b">Platform not configured. Missing: ${configErrors.join(', ')}</p></body></html>`);
+    });
+    return app;
+  }
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
 
@@ -84,7 +97,7 @@ export function buildApp() {
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'المسار غير موجود')));
 
   // Serve the built web app (production)
-  const here = path.dirname(fileURLToPath(import.meta.url));
+  const here = (() => { try { return path.dirname(fileURLToPath(import.meta.url)); } catch { return path.join(process.cwd(), 'src'); } })();
   const dist = path.resolve(here, '..', '..', 'client', 'dist');
   if (fs.existsSync(dist)) {
     app.use(express.static(dist, { index: false, maxAge: '1h' }));
@@ -101,10 +114,10 @@ const app = buildApp();
 /** Vercel's Express integration uses this default export (one Vercel Function). */
 export default app;
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  await migrate();
+const isMain = (() => { try { return !!process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]); } catch { return false; } })();
+if (isMain) migrate().then(() => {
   const server = app.listen(config.port, '0.0.0.0', () => console.log(`✓ شفرة الوعي الرقمي API on :${config.port} (storage: ${storageKind})`));
   const timer = startScheduler();
   // Cloudflare sends SIGTERM before stopping a container (sleep, deploy, host move)
   process.on('SIGTERM', () => { clearInterval(timer); server.close(() => process.exit(0)); setTimeout(() => process.exit(0), 10_000).unref(); });
-}
+}).catch((e) => { console.error(e); process.exit(1); });

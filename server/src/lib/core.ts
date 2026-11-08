@@ -6,30 +6,32 @@ import { ZodError, type ZodTypeAny, type z } from 'zod';
 import crypto from 'node:crypto';
 
 // ------------------------------------------------------------------ config
-function req(name: string): string {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing required env var ${name}`);
-  return v;
+// Configuration problems are collected instead of thrown at import time, so a misconfigured
+// deployment shows a clear message (see buildApp) instead of crashing the serverless function.
+export const configErrors: string[] = [];
+const databaseUrl = process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.DATABASE_URL_UNPOOLED || '';
+if (!databaseUrl) configErrors.push('DATABASE_URL');
+const jwtSecret = process.env.JWT_SECRET || '';
+if (jwtSecret.length < 32 || jwtSecret.includes('CHANGE_ME')) configErrors.push('JWT_SECRET (64 random characters)');
+export function assertConfig() {
+  if (configErrors.length) throw new Error(`Missing/invalid environment variables: ${configErrors.join(', ')}`);
 }
 export const config = {
-  databaseUrl: req('DATABASE_URL'),
-  jwtSecret: req('JWT_SECRET'),
+  databaseUrl,
+  jwtSecret: jwtSecret || crypto.randomBytes(32).toString('hex'), // placeholder only; requests are refused while misconfigured
   port: Number(process.env.PORT || 4000),
   publicUrl: process.env.PUBLIC_URL || 'http://localhost:5173',
   storageDir: process.env.STORAGE_DIR || './storage',
   maxUploadMb: Number(process.env.MAX_UPLOAD_MB || 50),
   isProd: process.env.NODE_ENV === 'production',
 };
-if (config.jwtSecret.length < 32 || config.jwtSecret.includes('CHANGE_ME')) {
-  throw new Error('JWT_SECRET must be a random string of at least 32 characters');
-}
 
 // ---------------------------------------------------------------------- db
 // pg returns numeric as string; parse to number for API convenience.
 pg.types.setTypeParser(1700, (v) => (v === null ? null : parseFloat(v)));
 pg.types.setTypeParser(20, (v) => (v === null ? null : parseInt(v, 10)));
 // Serverless instances are many and short-lived: keep each pool small (use a pooled connection string, e.g. Neon "-pooler").
-export const pool = new pg.Pool({ connectionString: config.databaseUrl, max: process.env.VERCEL ? 3 : 15, idleTimeoutMillis: process.env.VERCEL ? 5_000 : 10_000 });
+export const pool = new pg.Pool({ connectionString: config.databaseUrl || undefined, max: process.env.VERCEL ? 3 : 15, idleTimeoutMillis: process.env.VERCEL ? 5_000 : 10_000 });
 
 export async function q<T = any>(text: string, params: unknown[] = []): Promise<T[]> {
   const r = await pool.query(text, params);

@@ -2,12 +2,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pool, tx } from './lib/core.js';
+import { pool, tx, assertConfig } from './lib/core.js';
 import { WORLDS, STEP_MAX } from './content/worlds.js';
 
-const here = path.dirname(fileURLToPath(import.meta.url));
+// works whether the bundle is ESM or CommonJS
+const here = (() => { try { return path.dirname(fileURLToPath(import.meta.url)); } catch { return path.join(process.cwd(), 'src'); } })();
+const isMain = (() => { try { return !!process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]); } catch { return false; } })();
 
 export async function migrate() {
+  assertConfig();
   const sql = fs.readFileSync(path.join(here, '..', 'db', 'schema.sql'), 'utf8');
   await pool.query(sql);
 
@@ -63,7 +66,7 @@ export async function migrate() {
   });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+if (isMain) {
   migrate().then(() => { console.log('✓ schema applied & 7 worlds loaded'); return pool.end(); })
     .catch((e) => { console.error(e); process.exit(1); });
 }
