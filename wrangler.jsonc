@@ -16,11 +16,11 @@
   "triggers": { "crons": ["*/30 * * * *"] },
 
   "vars": {
-    "PUBLIC_URL": "https://shifra-digital-awareness.<your-subdomain>.workers.dev",
-    "S3_ENDPOINT": "https://<ACCOUNT_ID>.r2.cloudflarestorage.com",
     "S3_BUCKET": "shifra-files",
     "MAX_UPLOAD_MB": "50"
-  }
-  // Secrets (set with: npx wrangler secret put NAME):
-  //   DATABASE_URL, JWT_SECRET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, JOBS_TOKEN
+  },
+  // Keep variables set in the dashboard (PUBLIC_URL, S3_ENDPOINT) across Git deploys
+  "keep_vars": true
+  // Set in the dashboard (Settings → Variables and Secrets) or with `npx wrangler secret put NAME`:
+  //   PUBLIC_URL, S3_ENDPOINT, DATABASE_URL, JWT_SECRET, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, JOBS_TOKEN
 }
